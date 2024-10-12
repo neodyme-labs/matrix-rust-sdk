@@ -15,7 +15,6 @@
 //! Abstraction over an executor so we can spawn tasks under WASM the same way
 //! we do usually.
 
-#[cfg(target_arch = "wasm32")]
 use std::{
     future::Future,
     pin::Pin,
@@ -78,6 +77,54 @@ impl<T: 'static> Future for JoinHandle<T> {
     }
 }
 
+#[derive(Debug)]
+pub struct AbortOnDrop<T>(JoinHandle<T>);
+
+impl<T> AbortOnDrop<T> {
+    pub fn new(join_handle: JoinHandle<T>) -> Self {
+        Self(join_handle)
+    }
+}
+
+impl<T> Drop for AbortOnDrop<T> {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<T> Future for AbortOnDrop<T> {
+    type Output = Result<T, JoinError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.0).poll(cx)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<T: 'static> Future for AbortOnDrop<T> {
+    type Output = Result<T, JoinError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.0.abort_handle.is_aborted() {
+            // The future has been aborted. It is not possible to poll it again.
+            Poll::Ready(Err(JoinError))
+        } else {
+            Pin::new(&mut self.0.remote_handle).poll(cx).map(Ok)
+        }
+    }
+}
+
+/// Trait to create a `AbortOnDrop` from a `JoinHandle`.
+pub trait JoinHandleExt<T> {
+    fn abort_on_drop(self) -> AbortOnDrop<T>;
+}
+
+impl<T> JoinHandleExt<T> for JoinHandle<T> {
+    fn abort_on_drop(self) -> AbortOnDrop<T> {
+        AbortOnDrop::<T>::new(self)
+    }
+}
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;

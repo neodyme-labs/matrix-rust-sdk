@@ -111,11 +111,8 @@ type NotificationHandlerFut = Pin<Box<dyn Future<Output = ()> + Send>>;
 #[cfg(target_arch = "wasm32")]
 type NotificationHandlerFut = Pin<Box<dyn Future<Output = ()>>>;
 
-#[cfg(not(target_arch = "wasm32"))]
 type NotificationHandlerFn =
     Box<dyn Fn(Notification, Room, Client) -> NotificationHandlerFut + Send + Sync>;
-#[cfg(target_arch = "wasm32")]
-type NotificationHandlerFn = Box<dyn Fn(Notification, Room, Client) -> NotificationHandlerFut>;
 
 /// Enum controlling if a loop running callbacks should continue or abort.
 ///
@@ -1040,7 +1037,7 @@ impl Client {
     /// [`Client`] for now.
     pub async fn register_notification_handler<H, Fut>(&self, handler: H) -> &Self
     where
-        H: Fn(Notification, Room, Client) -> Fut + SendOutsideWasm + SyncOutsideWasm + 'static,
+        H: Fn(Notification, Room, Client) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = ()> + SendOutsideWasm + 'static,
     {
         self.inner.notification_handlers.write().await.push(Box::new(
