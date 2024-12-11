@@ -47,7 +47,7 @@ use ruma::{
             account::whoami,
             alias::{create_alias, delete_alias, get_alias},
             device::{delete_devices, get_devices, update_device},
-            directory::{get_public_rooms, get_public_rooms_filtered},
+            directory::{get_public_rooms, get_public_rooms_filtered, get_room_visibility},
             discovery::{
                 get_capabilities::{self, Capabilities},
                 get_supported_versions,
@@ -56,7 +56,7 @@ use ruma::{
             filter::{create_filter::v3::Request as FilterUploadRequest, FilterDefinition},
             knock::knock_room,
             membership::{join_room_by_id, join_room_by_id_or_alias},
-            room::create_room,
+            room::{create_room, Visibility},
             session::login::v3::DiscoveryInfo,
             sync::sync_events,
             uiaa,
@@ -2461,6 +2461,12 @@ impl Client {
         let response = self.send(request, None).await?;
         let base_room = self.inner.base_client.room_knocked(&response.room_id).await?;
         Ok(Room::new(self.clone(), base_room))
+    }
+
+    pub async fn get_room_visibility(&self, room_id: &RoomId) -> Result<Visibility> {
+        let request = get_room_visibility::v3::Request::new(room_id.to_owned());
+        let response = self.send(request, None).await?;
+        Ok(response.visibility)
     }
 }
 

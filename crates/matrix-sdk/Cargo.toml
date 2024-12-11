@@ -98,6 +98,7 @@ matrix-sdk-test = { workspace = true, optional = true }
 mime = { workspace = true }
 mime2ext = "0.1.53"
 once_cell = { workspace = true }
+percent-encoding = "2.3.1"
 pin-project-lite = { workspace = true }
 rand = { workspace = true , optional = true }
 ruma = { workspace = true, features = ["rand", "unstable-msc2448", "unstable-msc2965", "unstable-msc3930", "unstable-msc3245-v1-compat", "unstable-msc2867"] }

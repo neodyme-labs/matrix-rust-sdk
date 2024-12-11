@@ -141,6 +141,7 @@ use crate::{
     room::{
         knock_requests::{KnockRequest, KnockRequestMemberInfo},
         power_levels::{RoomPowerLevelChanges, RoomPowerLevelsExt},
+        privacy_settings::RoomPrivacySettings,
     },
     sync::RoomUpdate,
     utils::{IntoRawMessageLikeEventContent, IntoRawStateEventContent},
@@ -3340,6 +3341,10 @@ impl Room {
                 ))
             })
             .collect())
+    }
+
+    pub fn privacy_settings(&self) -> RoomPrivacySettings<'_> {
+        RoomPrivacySettings::new(&self.inner, &self.client)
     }
 }
 

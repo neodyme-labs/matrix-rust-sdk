@@ -1033,7 +1033,7 @@ impl KnockRequestActions {
         new_alias: Option<String>,
     ) -> Result<(), ClientError> {
         let new_alias = new_alias.map(TryInto::try_into).transpose()?;
-        self.inner.update_canonical_alias(new_alias).await.map_err(Into::into)
+        self.inner.privacy_settings().update_canonical_alias(new_alias).await.map_err(Into::into)
     }
 
     /// Enable End-to-end encryption in this room.
@@ -1047,13 +1047,17 @@ impl KnockRequestActions {
         visibility: RoomHistoryVisibility,
     ) -> Result<(), ClientError> {
         let visibility: RumaHistoryVisibility = visibility.try_into()?;
-        self.inner.update_room_history_visibility(visibility).await.map_err(Into::into)
+        self.inner
+            .privacy_settings()
+            .update_room_history_visibility(visibility)
+            .await
+            .map_err(Into::into)
     }
 
     /// Update the join rule for this room.
     pub async fn update_join_rules(&self, new_rule: JoinRule) -> Result<(), ClientError> {
         let new_rule: RumaJoinRule = new_rule.try_into()?;
-        self.inner.update_join_rule(new_rule).await.map_err(Into::into)
+        self.inner.privacy_settings().update_join_rule(new_rule).await.map_err(Into::into)
     }
 
     /// Update the room's visibility in the room directory.
@@ -1061,7 +1065,11 @@ impl KnockRequestActions {
         &self,
         visibility: RoomVisibility,
     ) -> Result<(), ClientError> {
-        self.inner.update_room_visibility(visibility.into()).await.map_err(Into::into)
+        self.inner
+            .privacy_settings()
+            .update_room_visibility(visibility.into())
+            .await
+            .map_err(Into::into)
     }
 }
 
