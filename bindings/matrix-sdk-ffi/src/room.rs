@@ -944,6 +944,53 @@ impl Room {
         let (cache, _drop_guards) = self.inner.event_cache().await?;
         Ok(cache.debug_string().await)
     }
+
+    /// Update the canonical alias of the room.
+    ///
+    /// Note that publishing the alias in the room directory is done separately.
+    pub async fn update_canonical_alias(
+        &self,
+        new_alias: Option<String>,
+    ) -> Result<(), ClientError> {
+        let new_alias = new_alias.map(TryInto::try_into).transpose()?;
+        self.inner.privacy_settings().update_canonical_alias(new_alias).await.map_err(Into::into)
+    }
+
+    /// Enable End-to-end encryption in this room.
+    pub async fn enable_encryption(&self) -> Result<(), ClientError> {
+        self.inner.enable_encryption().await.map_err(Into::into)
+    }
+
+    /// Update room history visibility for this room.
+    pub async fn update_history_visibility(
+        &self,
+        visibility: RoomHistoryVisibility,
+    ) -> Result<(), ClientError> {
+        let visibility: RumaHistoryVisibility = visibility.try_into()?;
+        self.inner
+            .privacy_settings()
+            .update_room_history_visibility(visibility)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Update the join rule for this room.
+    pub async fn update_join_rules(&self, new_rule: JoinRule) -> Result<(), ClientError> {
+        let new_rule: RumaJoinRule = new_rule.try_into()?;
+        self.inner.privacy_settings().update_join_rule(new_rule).await.map_err(Into::into)
+    }
+
+    /// Update the room's visibility in the room directory.
+    pub async fn update_room_visibility(
+        &self,
+        visibility: RoomVisibility,
+    ) -> Result<(), ClientError> {
+        self.inner
+            .privacy_settings()
+            .update_room_visibility(visibility.into())
+            .await
+            .map_err(Into::into)
+    }
 }
 
 impl From<matrix_sdk::room::knock_requests::KnockRequest> for KnockRequest {
@@ -1023,53 +1070,6 @@ impl KnockRequestActions {
     /// a new one with the updated value should be emitted instead.
     pub async fn mark_as_seen(&self) -> Result<(), ClientError> {
         self.inner.mark_as_seen().await.map_err(Into::into)
-    }
-
-    /// Update the canonical alias of the room.
-    ///
-    /// Note that publishing the alias in the room directory is done separately.
-    pub async fn update_canonical_alias(
-        &self,
-        new_alias: Option<String>,
-    ) -> Result<(), ClientError> {
-        let new_alias = new_alias.map(TryInto::try_into).transpose()?;
-        self.inner.privacy_settings().update_canonical_alias(new_alias).await.map_err(Into::into)
-    }
-
-    /// Enable End-to-end encryption in this room.
-    pub async fn enable_encryption(&self) -> Result<(), ClientError> {
-        self.inner.enable_encryption().await.map_err(Into::into)
-    }
-
-    /// Update room history visibility for this room.
-    pub async fn update_history_visibility(
-        &self,
-        visibility: RoomHistoryVisibility,
-    ) -> Result<(), ClientError> {
-        let visibility: RumaHistoryVisibility = visibility.try_into()?;
-        self.inner
-            .privacy_settings()
-            .update_room_history_visibility(visibility)
-            .await
-            .map_err(Into::into)
-    }
-
-    /// Update the join rule for this room.
-    pub async fn update_join_rules(&self, new_rule: JoinRule) -> Result<(), ClientError> {
-        let new_rule: RumaJoinRule = new_rule.try_into()?;
-        self.inner.privacy_settings().update_join_rule(new_rule).await.map_err(Into::into)
-    }
-
-    /// Update the room's visibility in the room directory.
-    pub async fn update_room_visibility(
-        &self,
-        visibility: RoomVisibility,
-    ) -> Result<(), ClientError> {
-        self.inner
-            .privacy_settings()
-            .update_room_visibility(visibility.into())
-            .await
-            .map_err(Into::into)
     }
 }
 
