@@ -1462,6 +1462,17 @@ impl From<RoomVisibility> for Visibility {
     }
 }
 
+impl From<Visibility> for RoomVisibility {
+    fn from(value: Visibility) -> Self {
+        match value {
+            Visibility::Public => Self::Public,
+            Visibility::Private => Self::Private,
+            // FIXME use try_into instead
+            _ => panic!("Visibility not supported"),
+        }
+    }
+}
+
 #[derive(uniffi::Enum)]
 #[allow(clippy::enum_variant_names)]
 pub enum RoomPreset {

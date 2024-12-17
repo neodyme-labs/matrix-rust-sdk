@@ -991,6 +991,11 @@ impl Room {
             .await
             .map_err(Into::into)
     }
+
+    pub async fn get_room_visibility(&self) -> Result<RoomVisibility, ClientError> {
+        let visibility = self.inner.privacy_settings().get_room_visibility().await?;
+        Ok(visibility.into())
+    }
 }
 
 impl From<matrix_sdk::room::knock_requests::KnockRequest> for KnockRequest {

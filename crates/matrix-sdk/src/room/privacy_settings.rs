@@ -138,6 +138,10 @@ impl<'a> RoomPrivacySettings<'a> {
 
         Ok(())
     }
+
+    pub async fn get_room_visibility(&'a self) -> Result<Visibility> {
+        self.client.get_room_visibility(self.room.room_id()).await
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
