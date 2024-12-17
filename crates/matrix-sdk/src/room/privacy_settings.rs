@@ -92,25 +92,13 @@ impl<'a> RoomPrivacySettings<'a> {
         Ok(())
     }
 
-    /// Update the room alias of this room and publish it in the room directory,
-    /// making the visibility of the room `public`, if needed.
+    /// Update the room alias of this room and publish it in the room directory.
     pub async fn update_and_publish_room_alias(&'a self, alias: &RoomAliasId) -> Result<()> {
         let previous_alias = self.room.canonical_alias();
 
         // First, publish the new alias in the room directory if needed
         if self.client.is_room_alias_available(alias).await? {
             self.client.create_room_alias(alias, self.room.room_id()).await?;
-        }
-
-        // If the room wasn't public before, make it so now
-        let visibility = self
-            .client
-            .get_room_visibility(self.room.room_id())
-            .await
-            .unwrap_or(Visibility::Private);
-
-        if visibility != Visibility::Public {
-            self.update_room_visibility(Visibility::Public).await?;
         }
 
         // Remove the previous alias from the directory if needed
