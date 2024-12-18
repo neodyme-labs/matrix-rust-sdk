@@ -107,6 +107,10 @@ impl RoomEvents {
             num_duplicated: duplicated_event_ids.len(),
         };
 
+        if report.deduplicated_all_new_events() {
+            return report;
+        }
+
         // Remove the _old_ duplicated events!
         //
         // We don't have to worry the removals can change the position of the existing
@@ -140,6 +144,10 @@ impl RoomEvents {
             num_new_unique: unique_events.len(),
             num_duplicated: duplicated_event_ids.len(),
         };
+
+        if report.deduplicated_all_new_events() {
+            return Ok(report);
+        }
 
         // Remove the _old_ duplicated events!
         //
@@ -180,6 +188,11 @@ impl RoomEvents {
             num_new_unique: unique_events.len(),
             num_duplicated: duplicated_event_ids.len(),
         };
+
+        if report.deduplicated_all_new_events() {
+            let pos = self.chunks.remove_gap_at(gap_identifier)?;
+            return Ok((report, pos));
+        }
 
         // Remove the _old_ duplicated events!
         //
