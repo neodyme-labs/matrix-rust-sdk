@@ -9,6 +9,7 @@ use crate::{
     room::{Membership, RoomHero, RoomHistoryVisibility},
     room_member::RoomMember,
 };
+use crate::error::ClientError;
 
 #[derive(uniffi::Record)]
 pub struct RoomInfo {
@@ -61,11 +62,11 @@ pub struct RoomInfo {
     /// The join rule for this room, if known.
     join_rule: Option<JoinRule>,
     /// The history visibility for this room, if known.
-    history_visibility: Option<RoomHistoryVisibility>,
+    history_visibility: RoomHistoryVisibility,
 }
 
 impl RoomInfo {
-    pub(crate) async fn new(room: &matrix_sdk::Room) -> matrix_sdk::Result<Self> {
+    pub(crate) async fn new(room: &matrix_sdk::Room) -> Result<Self, ClientError> {
         let unread_notification_counts = room.unread_notification_counts();
 
         let power_levels_map = room.users_with_power_levels().await;
@@ -130,7 +131,7 @@ impl RoomInfo {
             num_unread_mentions: room.num_unread_mentions(),
             pinned_event_ids,
             join_rule: join_rule.ok(),
-            history_visibility: room.history_visibility().and_then(|h| h.try_into().ok()),
+            history_visibility: room.history_visibility_or_default().try_into()?,
         })
     }
 }
