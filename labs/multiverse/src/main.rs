@@ -259,6 +259,8 @@ impl App {
                         }
                     };
 
+                    let builder = builder.with_vectordiffs_as_inputs();
+
                     if let Err(err) = ui_room.init_timeline_with_builder(builder).await {
                         error!("error when creating default timeline: {err}");
                         continue;
