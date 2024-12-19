@@ -703,6 +703,9 @@ impl RoomListItem {
             timeline_builder = timeline_builder.with_unable_to_decrypt_hook(utd_hook);
         }
 
+        // yolo
+        timeline_builder = timeline_builder.with_vectordiffs_as_inputs();
+
         self.inner.init_timeline_with_builder(timeline_builder).map_err(RoomListError::from).await
     }
 
