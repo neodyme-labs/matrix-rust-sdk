@@ -1,15 +1,228 @@
+use std::default::Default;
+
 use insta::{assert_json_snapshot, with_settings};
 use ruma::{
     api::client::keys::get_keys::v3::Response as KeyQueryResponse, device_id,
-    encryption::DeviceKeys, serde::Raw, user_id, DeviceId, OwnedDeviceId, UserId,
+    encryption::DeviceKeys, serde::Raw, user_id, CanonicalJsonValue, DeviceId, OwnedDeviceId,
+    OwnedUserId, UserId,
 };
 use serde_json::{json, Value};
+use vodozemac::{Curve25519PublicKey, Ed25519SecretKey, Ed25519Signature};
 
 use super::keys_query::{keys_query, master_keys, KeysQueryUser};
 use crate::{
     ruma_response_from_json,
     test_json::keys_query::{device_keys_payload, self_signing_keys},
 };
+
+/// A test helper for building sets of test user data.
+///
+/// Currently, its main purpose is to build `/keys/query` response objects
+/// ([`KeyQueryResponse`]), but that may evolve in future.
+pub struct TestUserDataBuilder {
+    /// The User ID of the user that this test data is about.
+    pub user_id: OwnedUserId,
+
+    /// The user's private master cross-signing key, once it has been set via
+    /// [`TestUserDataBuilder::with_cross_signing_keys`].
+    pub master_cross_signing_key: Option<Ed25519SecretKey>,
+
+    /// The user's private self-signing key, once it has been set via
+    /// [`TestUserDataBuilder::with_cross_signing_keys`].
+    pub self_signing_key: Option<Ed25519SecretKey>,
+
+    /// The user's private user-signing key, once it has been set via
+    /// [`TestUserDataBuilder::with_cross_signing_keys`].
+    pub user_signing_key: Option<Ed25519SecretKey>,
+
+    /// The JSON representation of the user's public master cross-signing key,
+    /// ready for return in the `/keys/query` response.
+    ///
+    /// This starts off as `null`, but is populated with the correct JSON object
+    /// when the master key is set. It accumulates additional signatures
+    /// when the key is cross-signed
+    /// via [`TestUserDataBuilder::with_user_verification_signature`].
+    master_cross_signing_key_json: Value,
+
+    /// The JSON object containing the public, signed, device keys, added via
+    /// [`TestUserDataBuilder::with_device`].
+    device_keys: serde_json::Map<String, Value>,
+}
+
+impl TestUserDataBuilder {
+    /// Create a new [`TestUserDataBuilder`] for the given user.
+    pub fn new(user_id: OwnedUserId) -> Self {
+        TestUserDataBuilder {
+            user_id,
+            master_cross_signing_key: None,
+            self_signing_key: None,
+            user_signing_key: None,
+            master_cross_signing_key_json: Value::Null,
+            device_keys: Default::default(),
+        }
+    }
+
+    /// Add a set of cross-signing keys to the data to be returned.
+    ///
+    /// The private keys must be provided here so that signatures can be
+    /// correctly calculated.
+    pub fn with_cross_signing_keys(
+        mut self,
+        master_cross_signing_key: Ed25519SecretKey,
+        self_signing_key: Ed25519SecretKey,
+        user_signing_key: Ed25519SecretKey,
+    ) -> Self {
+        // For the master key, we build the JSON representation upfront, so that we can
+        // start to accumulate signatures. For the other keys, we generate the
+        // JSON representation on-demand.
+        let public_master_key_base64 = master_cross_signing_key.public_key().to_base64();
+        let mut master_key_json = json!({
+            "keys": {
+                format!("ed25519:{}", public_master_key_base64): public_master_key_base64,
+            },
+            "signatures": {},
+            "usage": [ "master" ],
+            "user_id": self.user_id.clone(),
+        });
+
+        // Sign the master key with itself
+        sign_json(
+            &mut master_key_json,
+            &master_cross_signing_key,
+            &self.user_id,
+            &public_master_key_base64,
+        );
+
+        self.master_cross_signing_key_json = master_key_json;
+        self.master_cross_signing_key = Some(master_cross_signing_key);
+        self.self_signing_key = Some(self_signing_key);
+        self.user_signing_key = Some(user_signing_key);
+
+        self
+    }
+
+    /// Add a device to the data to be returned.
+    ///
+    /// As well as a device ID and public curve25519 device key, the *private*
+    /// ed25519 device key must be provided so that the signature can be
+    /// calculated.
+    ///
+    /// The device can optionally be signed by the self-signing key by setting
+    /// `cross_signed` to `true`.
+    pub fn with_device(
+        mut self,
+        device_id: &DeviceId,
+        curve25519_public_key: &Curve25519PublicKey,
+        ed25519_secret_key: &Ed25519SecretKey,
+        cross_signed: bool,
+    ) -> Self {
+        let mut device_keys = json!({
+            "algorithms": [
+                "m.olm.v1.curve25519-aes-sha2",
+                "m.megolm.v1.aes-sha2"
+            ],
+            "device_id": device_id.to_owned(),
+            "keys": {
+                format!("curve25519:{}", device_id): curve25519_public_key.to_base64(),
+                format!("ed25519:{}", device_id): ed25519_secret_key.public_key().to_base64(),
+            },
+            "signatures": {},
+            "user_id": self.user_id.clone(),
+        });
+
+        sign_json(&mut device_keys, ed25519_secret_key, &self.user_id, device_id.as_str());
+        if cross_signed {
+            let ssk = self
+                .self_signing_key
+                .as_ref()
+                .expect("must call with_cross_signing_keys() before creating cross-signed device");
+            sign_json(&mut device_keys, ssk, &self.user_id, &ssk.public_key().to_base64());
+        }
+
+        self.device_keys.insert(device_id.to_string(), device_keys);
+        self
+    }
+
+    /// Add the signature from another user to our master key, as would happen
+    /// if that user had verified us.
+    pub fn with_user_verification_signature(
+        mut self,
+        signing_user_id: &UserId,
+        signing_user_user_signing_key: &Ed25519SecretKey,
+    ) -> Self {
+        sign_json(
+            &mut self.master_cross_signing_key_json,
+            signing_user_user_signing_key,
+            signing_user_id,
+            &signing_user_user_signing_key.public_key().to_base64(),
+        );
+        self
+    }
+
+    /// Build the JSON for a `/keys/query` response containing this user's data.
+    pub fn build_keys_query_response_json(&self) -> Value {
+        let mut data: Value = json!({});
+
+        if !self.device_keys.is_empty() {
+            data["device_keys"] = json!({
+                self.user_id.as_str(): self.device_keys.clone(),
+            });
+        }
+
+        if self.master_cross_signing_key_json.is_object() {
+            data["master_keys"] =
+                json!({self.user_id.as_str(): self.master_cross_signing_key_json.clone()});
+        }
+
+        if let Some(self_signing_key) = &self.self_signing_key {
+            let public_key_base64 = self_signing_key.public_key().to_base64();
+            let mut self_signing_key_json = json!({
+                "keys": {
+                    format!("ed25519:{}", public_key_base64): public_key_base64,
+                },
+                "signatures": {},
+                "usage": [ "self_signing" ],
+                "user_id": self.user_id.clone(),
+            });
+
+            if let Some(master_key) = &self.master_cross_signing_key {
+                // Sign self-signing key with master key
+                sign_json(
+                    &mut self_signing_key_json,
+                    master_key,
+                    &self.user_id,
+                    &master_key.public_key().to_base64(),
+                );
+            }
+            data["self_signing_keys"] = json!({self.user_id.as_str():  self_signing_key_json});
+        }
+
+        if let Some(user_signing_key) = &self.user_signing_key {
+            let public_key_base64 = user_signing_key.public_key().to_base64();
+            let mut user_signing_key_json = json!({
+                "keys": {
+                    format!("ed25519:{}", public_key_base64): public_key_base64,
+                },
+                "signatures": {},
+                "usage": [ "user_signing" ],
+                "user_id": self.user_id.clone(),
+            });
+
+            if let Some(master_key) = &self.master_cross_signing_key {
+                // Sign user-signing key with master key
+                sign_json(
+                    &mut user_signing_key_json,
+                    master_key,
+                    &self.user_id,
+                    &master_key.public_key().to_base64(),
+                );
+            }
+            data["user_signing_keys"] = json!({self.user_id.as_str(): user_signing_key_json});
+        }
+
+        data
+    }
+}
 
 /// This set of keys/query response was generated using a local synapse.
 /// Each users was created, device added according to needs and the payload
@@ -46,59 +259,20 @@ impl KeyDistributionTestData {
     pub const USER_SIGNING_KEY_PRIVATE_EXPORT: &'static str =
         "zQSosK46giUFs2ACsaf32bA7drcIXbmViyEt+TLfloI";
 
+    /// Current user's private user-signing key, as an [`Ed25519SecretKey`].
+    pub fn me_private_user_signing_key() -> Ed25519SecretKey {
+        Ed25519SecretKey::from_base64(Self::USER_SIGNING_KEY_PRIVATE_EXPORT).unwrap()
+    }
+
     /// Current user keys query response containing the cross-signing keys
     pub fn me_keys_query_response() -> KeyQueryResponse {
-        let data = json!({
-            "master_keys": {
-                "@me:localhost": {
-                    "keys": {
-                        "ed25519:KOS8zz9SJnMOxpfPOx9LO2+abuEcnZP/lxDo5RsXao4": "KOS8zz9SJnMOxpfPOx9LO2+abuEcnZP/lxDo5RsXao4"
-                    },
-                    "signatures": {
-                        "@me:localhost": {
-                            "ed25519:KOS8zz9SJnMOxpfPOx9LO2+abuEcnZP/lxDo5RsXao4": "5G9+Ns28rzNd+2DvP73Y0orr8sxduRQcrJj0YB7ZygH7oeXshvGLeQn6mcNs7q7ZrMR5bYlXxopufKSWWoKpCg",
-                        }
-                    },
-                    "usage": [
-                        "master"
-                    ],
-                    "user_id": "@me:localhost"
-                }
-            },
-            "self_signing_keys": {
-                "@me:localhost": {
-                    "keys": {
-                        "ed25519:9gXJQzvqZ+KQunfBTd0g9AkrulwEeFfspyWTSQFqqrw": "9gXJQzvqZ+KQunfBTd0g9AkrulwEeFfspyWTSQFqqrw"
-                    },
-                    "signatures": {
-                        "@me:localhost": {
-                            "ed25519:KOS8zz9SJnMOxpfPOx9LO2+abuEcnZP/lxDo5RsXao4": "amiKDLpWIwUQPzq+eov6KJsoskkWA1YzrGNb7HF3OcGV0nm4t7df0tUdZB/OpREtT5D78BKtzOPUipde2DxUAw"
-                        }
-                    },
-                    "usage": [
-                        "self_signing"
-                    ],
-                    "user_id": "@me:localhost"
-                }
-            },
-            "user_signing_keys": {
-                "@me:localhost": {
-                    "keys": {
-                        "ed25519:mvzOc2EuHoVfZTk1hX3y0hyjUs4MrfPv2V/PUFzMQJY": "mvzOc2EuHoVfZTk1hX3y0hyjUs4MrfPv2V/PUFzMQJY"
-                    },
-                    "signatures": {
-                        "@me:localhost": {
-                            "ed25519:KOS8zz9SJnMOxpfPOx9LO2+abuEcnZP/lxDo5RsXao4": "Cv56vTHAzRkvdcELleOlhECZQP0pXcikCdEZrnXbkjXQ/k0ZvVOJ1beG/SiH8xc6zh1bCIMYv96C9p8o+7VZCQ"
-                        }
-                    },
-                    "usage": [
-                        "user_signing"
-                    ],
-                    "user_id": "@me:localhost"
-                }
-            }
-        });
+        let builder = TestUserDataBuilder::new(Self::me_id().to_owned()).with_cross_signing_keys(
+            Ed25519SecretKey::from_base64(Self::MASTER_KEY_PRIVATE_EXPORT).unwrap(),
+            Ed25519SecretKey::from_base64(Self::SELF_SIGNING_KEY_PRIVATE_EXPORT).unwrap(),
+            Self::me_private_user_signing_key(),
+        );
 
+        let data = builder.build_keys_query_response_json();
         with_settings!({sort_maps => true}, {
             assert_json_snapshot!("KeyDistributionTestData::me_keys_query_response", data);
         });
@@ -1288,4 +1462,64 @@ impl MaloIdentityChangeDataSet {
 
         ruma_response_from_json(&data)
     }
+}
+
+/// Calculate the signature for a JSON object, without adding that signature to
+/// the object.
+///
+/// # Arguments
+///
+/// * `value` - the JSON object to be signed.
+/// * `signing_key` - the Ed25519 key to sign with.
+fn calculate_json_signature(mut value: Value, signing_key: &Ed25519SecretKey) -> Ed25519Signature {
+    // strip `unsigned` and any existing signatures
+    let json_object = value.as_object_mut().expect("value must be object");
+    json_object.remove("signatures");
+    json_object.remove("unsigned");
+
+    let canonical_json: CanonicalJsonValue =
+        value.try_into().expect("could not convert to canonicaljson");
+
+    // do the signing
+    signing_key.sign(canonical_json.to_string().as_ref())
+}
+
+/// Add a signature to a JSON object, following the Matrix JSON-signing spec (https://spec.matrix.org/v1.12/appendices/#signing-details).
+///
+/// # Arguments
+///
+/// * `value` - the JSON object to be signed.
+/// * `signing_key` - the Ed25519 key to sign with.
+/// * `user_id` - the user doing the signing. This will be used to add the
+///   signature to the object.
+/// * `key_identifier` - the name of the key being used to sign with,
+///   *excluding* the `ed25519` prefix.
+///
+/// # Panics
+///
+/// If the JSON value passed in is not an object, or contains a non-object
+/// `signatures` property.
+fn sign_json(
+    value: &mut Value,
+    signing_key: &Ed25519SecretKey,
+    user_id: &UserId,
+    key_identifier: &str,
+) {
+    let signature = calculate_json_signature(value.clone(), signing_key);
+
+    let value_obj = value.as_object_mut().expect("value must be object");
+
+    let signatures_obj = value_obj
+        .entry("signatures")
+        .or_insert_with(|| serde_json::Map::new().into())
+        .as_object_mut()
+        .expect("signatures key must be object");
+
+    let user_signatures_obj = signatures_obj
+        .entry(user_id.to_string())
+        .or_insert_with(|| serde_json::Map::new().into())
+        .as_object_mut()
+        .expect("signatures keys must be object");
+
+    user_signatures_obj.insert(format!("ed25519:{}", key_identifier), signature.to_base64().into());
 }
