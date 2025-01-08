@@ -244,8 +244,10 @@ pub struct TracingConfiguration {
 }
 
 #[matrix_sdk_ffi_macros::export]
-pub fn setup_tracing(config: TracingConfiguration) {
+pub async fn setup_tracing(config: TracingConfiguration) {
     log_panics();
+
+    println!("config.filter = {}", config.filter);
 
     tracing_subscriber::registry()
         .with(EnvFilter::new(&config.filter))
