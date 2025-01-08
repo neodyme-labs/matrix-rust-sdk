@@ -244,10 +244,14 @@ pub struct TracingConfiguration {
 }
 
 #[matrix_sdk_ffi_macros::export]
-pub async fn setup_tracing(config: TracingConfiguration) {
+pub async fn setup_tracing(mut config: TracingConfiguration) {
     log_panics();
 
-    println!("config.filter = {}", config.filter);
+    println!("before, config.filter = {}", config.filter);
+    if !config.filter.split(',').any(|pair| !pair.contains('=')) {
+        config.filter = "error,".to_owned() + config.filter.as_str();
+    }
+    println!("after, config.filter = {}", config.filter);
 
     tracing_subscriber::registry()
         .with(EnvFilter::new(&config.filter))
