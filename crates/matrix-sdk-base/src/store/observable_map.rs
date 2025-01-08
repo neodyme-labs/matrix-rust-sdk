@@ -70,15 +70,13 @@ where
         match self.mapping.get(&key) {
             Some(position) => {
                 self.values.set(*position, value);
-
                 *position
             }
+
             None => {
                 let position = self.values.len();
-
                 self.values.push_back(value);
                 self.mapping.insert(key, position);
-
                 position
             }
         }
@@ -139,13 +137,30 @@ where
     {
         let position = self.mapping.remove(key)?;
 
-        // Reindex every mapped entry that is after the position we're looking to
-        // remove.
-        for mapped_pos in self.mapping.values_mut().filter(|pos| **pos > position) {
-            *mapped_pos = mapped_pos.saturating_sub(1);
-        }
+        if self.values.len() == 1 {
+            // This was the only entry; nothing more to do than remove it.
+            self.values.pop_back()
+        } else if position == self.values.len() - 1 {
+            // This was the last entry; no need to do anything extra, all other
+            // indices are still valid.
+            self.values.pop_back()
+        } else {
+            // This wasn't the only entry, nor the last one.
+            //
+            // We're going to swap the last entry with the one we just removed. This means:
+            // - update the internal mapping so the last entry points to the removed
+            //   position now,
+            // - update the array so the last value is inserted at the position of removal.
+            for pos in self.mapping.values_mut() {
+                if *pos == self.values.len() {
+                    *pos = position;
+                    break;
+                }
+            }
 
-        Some(self.values.remove(position))
+            self.values.swap(position, self.values.len() - 1);
+            self.values.pop_back()
+        }
     }
 }
 
@@ -286,9 +301,30 @@ mod tests {
 
         assert_pending!(stream);
 
-        // remove one item
+        // remove a non last item
         map.remove(&'b');
-        assert_next_eq!(stream, vec![VectorDiff::Remove { index: 0 }]);
+        assert_next_eq!(
+            stream,
+            vec![
+                VectorDiff::Remove { index: 0 },
+                VectorDiff::PopBack,
+                VectorDiff::Insert { index: 0, value: 'e' }
+            ]
+        );
+
+        assert_pending!(stream);
+
+        // map is now { 'a': 'e', 'c': 'g' }.
+        // remove the last item
+        map.remove(&'c');
+        assert_next_eq!(stream, vec![VectorDiff::Remove { index: 1 },]);
+
+        assert_pending!(stream);
+
+        // map is now { 'a' }.
+        // remove the final last item
+        map.remove(&'a');
+        assert_next_eq!(stream, vec![VectorDiff::Remove { index: 0 },]);
 
         assert_pending!(stream);
 
