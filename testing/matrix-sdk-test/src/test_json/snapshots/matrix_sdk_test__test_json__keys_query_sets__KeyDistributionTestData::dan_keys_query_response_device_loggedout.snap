@@ -25,7 +25,6 @@ expression: data
       }
     }
   },
-  "failures": {},
   "master_keys": {
     "@dan:localhost": {
       "keys": {
