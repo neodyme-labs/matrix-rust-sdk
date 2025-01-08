@@ -34,6 +34,7 @@ mod tracing;
 mod utils;
 mod widget;
 
+#[cfg(not(target_arch = "wasm32"))]
 use async_compat::TOKIO1 as RUNTIME;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContentWithoutRelation;
 

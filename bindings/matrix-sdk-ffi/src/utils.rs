@@ -14,7 +14,6 @@
 
 use std::{mem::ManuallyDrop, ops::Deref};
 
-use async_compat::TOKIO1 as RUNTIME;
 use ruma::{MilliSecondsSinceUnixEpoch, UInt};
 use tracing::warn;
 
@@ -54,7 +53,8 @@ impl<T> AsyncRuntimeDropped<T> {
 
 impl<T> Drop for AsyncRuntimeDropped<T> {
     fn drop(&mut self) {
-        let _guard = RUNTIME.enter();
+        #[cfg(not(target_arch = "wasm32"))]
+        let _guard = crate::RUNTIME.enter();
         // SAFETY: self.inner is never used again, which is the only requirement
         //         for ManuallyDrop::drop to be used safely.
         unsafe {
