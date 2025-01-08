@@ -14,8 +14,9 @@ use tracing_subscriber::{
     EnvFilter, Layer,
 };
 
-pub fn log_panics() {
+fn log_panics() {
     std::env::set_var("RUST_BACKTRACE", "1");
+
     log_panics::init();
 }
 
@@ -250,4 +251,22 @@ pub fn setup_tracing(config: TracingConfiguration) {
         .with(EnvFilter::new(&config.filter))
         .with(text_layers(config))
         .init();
+
+    println!("printing to stdout");
+    eprintln!("printing to stderr");
+    tracing::error!("An error logged, no target");
+    tracing::error!(target: "panic", "An error logged, target=panic");
+    tracing::warn!("A warning logged, no target");
+    tracing::warn!(target: "panic", "A warning logged, target=panic");
+
+    tokio::spawn(async {
+        println!("from tokio task: printing to stdout");
+        eprintln!("from tokio task: printing to stderr");
+        tracing::error!("from tokio task: An error logged, no target");
+        tracing::error!(target: "panic", "from tokio task: An error logged, target=panic");
+        tracing::warn!("from tokio task: A warning logged, no target");
+        tracing::warn!(target: "panic", "from tokio task: A warning logged, target=panic");
+
+        panic!("it's a panic");
+    });
 }
