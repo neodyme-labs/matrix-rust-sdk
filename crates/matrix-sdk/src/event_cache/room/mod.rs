@@ -323,7 +323,8 @@ impl RoomEventCacheInner {
             // Only keep the previous-batch token if we have a limited timeline; otherwise,
             // we know about all the events, and we don't need to back-paginate,
             // so we wouldn't make use of the given previous-batch token.
-            let prev_batch = if timeline.limited { timeline.prev_batch } else { None };
+            let prev_batch =
+                if !has_storage || timeline.limited { timeline.prev_batch } else { None };
 
             self.append_new_events(
                 timeline.events,
