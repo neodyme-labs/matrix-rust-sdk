@@ -715,10 +715,15 @@ impl MatrixMockServer {
     ///     .mount()
     ///     .await;
     ///
-    /// let visibility = client
-    ///     .get_room_visibility(room_id!("!a:b.c"))
+    /// let room = mock_server
+    ///     .sync_joined_room(&client, room_id!("!room_id:localhost"))
+    ///     .await;
+    ///
+    /// let visibility = room
+    ///     .privacy_settings()
+    ///     .get_room_visibility()
     ///     .await
-    ///     .expect("We should be able to update the room's visibility");
+    ///     .expect("We should be able to get the room's visibility");
     /// assert_eq!(visibility, Visibility::Public);
     /// # anyhow::Ok(()) });
     /// ```
