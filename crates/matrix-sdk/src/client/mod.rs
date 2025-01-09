@@ -1211,7 +1211,7 @@ impl Client {
     /// Removes a room alias from the room directory.
     pub async fn remove_room_alias(&self, alias: &RoomAliasId) -> HttpResult<()> {
         let request = delete_alias::v3::Request::new(alias.to_owned());
-        self.send(request, None).await?;
+        self.send(request).await?;
         Ok(())
     }
 

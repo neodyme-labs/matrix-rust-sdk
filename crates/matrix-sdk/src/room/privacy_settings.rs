@@ -97,7 +97,7 @@ impl<'a> RoomPrivacySettings<'a> {
             &EmptyStateKey,
             &content,
         )?;
-        self.client.send(request, None).await?;
+        self.client.send(request).await?;
 
         Ok(())
     }
@@ -117,7 +117,7 @@ impl<'a> RoomPrivacySettings<'a> {
             &EmptyStateKey,
             &RoomHistoryVisibilityEventContent::new(new_value),
         )?;
-        self.client.send(request, None).await?;
+        self.client.send(request).await?;
         Ok(())
     }
 
@@ -133,7 +133,7 @@ impl<'a> RoomPrivacySettings<'a> {
             &EmptyStateKey,
             &RoomJoinRulesEventContent::new(new_rule),
         )?;
-        self.client.send(request, None).await?;
+        self.client.send(request).await?;
         Ok(())
     }
 
@@ -143,7 +143,7 @@ impl<'a> RoomPrivacySettings<'a> {
     /// and can be found using it.
     pub async fn get_room_visibility(&'a self) -> Result<Visibility> {
         let request = get_room_visibility::v3::Request::new(self.room.room_id().to_owned());
-        let response = self.client.send(request, None).await?;
+        let response = self.client.send(request).await?;
         Ok(response.visibility)
     }
 
@@ -155,7 +155,7 @@ impl<'a> RoomPrivacySettings<'a> {
         let request =
             set_room_visibility::v3::Request::new(self.room.room_id().to_owned(), visibility);
 
-        self.client.send(request, None).await?;
+        self.client.send(request).await?;
 
         Ok(())
     }
