@@ -124,6 +124,7 @@ impl OidcClient {
     pub(crate) async fn request_device_authorization(
         &self,
         device_id: Curve25519PublicKey,
+        extra_scopes: Option<Vec<String>>,
     ) -> Result<CoreDeviceAuthorizationResponse, DeviceAuhorizationOidcError> {
         let scopes = [
             ScopeToken::Openid,
@@ -134,7 +135,9 @@ impl OidcClient {
             ),
         ]
         .into_iter()
-        .map(|scope| Scope::new(scope.to_string()));
+        .map(|scope| scope.to_string())
+        .chain(extra_scopes.unwrap_or_default())
+        .map(Scope::new);
 
         let details: CoreDeviceAuthorizationResponse = self
             .inner
