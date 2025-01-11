@@ -19,6 +19,8 @@ use ruma::OwnedDeviceId;
 use tracing::trace;
 
 use super::{DeviceCodeFinishLoginError, DeviceCodeLoginError};
+#[cfg(doc)]
+use crate::oidc::Oidc;
 use crate::{
     authentication::common_oidc::{oidc_client::OidcClient, DeviceAuhorizationOidcError},
     oidc::registrations::OidcRegistrations,
